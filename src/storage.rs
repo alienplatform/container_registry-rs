@@ -539,9 +539,22 @@ impl RegistryStorage for FilesystemStorage {
 
         let tmp_tag = self.temp_tag_path();
 
-        tokio::fs::symlink(self.blob_rel_path(digest), &tmp_tag)
-            .await
-            .map_err(Error::Io)?;
+        // On Unix, use a symlink for atomic tag updates.
+        // On Windows, symlinks require elevated privileges, so copy instead.
+        // Manifests are small JSON, so the copy overhead is negligible.
+        #[cfg(unix)]
+        {
+            tokio::fs::symlink(self.blob_rel_path(digest), &tmp_tag)
+                .await
+                .map_err(Error::Io)?;
+        }
+        #[cfg(not(unix))]
+        {
+            let manifest_path = self.manifest_path(digest);
+            tokio::fs::copy(&manifest_path, &tmp_tag)
+                .await
+                .map_err(Error::Io)?;
+        }
         tokio::fs::rename(tmp_tag, tag).await.map_err(Error::Io)?;
 
         Ok(digest)
