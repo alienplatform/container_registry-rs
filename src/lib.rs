@@ -631,25 +631,25 @@ async fn upload_finalize(
         .await
         .require_write()?;
 
-    // We do not support the final chunk in the `PUT` call, so ensure that's not the case.
-    match request.headers().get(CONTENT_LENGTH) {
-        Some(value) => {
-            let num_bytes: u64 = value
-                .to_str()
-                .map_err(|err| RegistryError::ContentLengthMalformed(Box::new(err)))?
-                .parse()
-                .map_err(|err| RegistryError::ContentLengthMalformed(Box::new(err)))?;
-            if num_bytes != 0 {
-                return Err(RegistryError::NotSupported(
-                    "missing content length not implemented",
-                ));
+    // Support monolithic upload: if the PUT includes a body, stream it
+    // into the upload before finalizing. This implements the OCI Distribution
+    // spec's "monolithic upload" flow (single PUT with body + digest query param).
+    {
+        let mut body = request.into_body().into_data_stream();
+        let mut writer = registry.storage.get_upload_writer(0, upload).await?;
+        while let Some(result) = body.next().await {
+            let chunk = result.map_err(RegistryError::IncomingReadFailed)?;
+            if !chunk.is_empty() {
+                writer
+                    .write_all(chunk.as_ref())
+                    .await
+                    .map_err(RegistryError::LocalWriteFailed)?;
             }
-
-            // 0 is the only acceptable value here.
         }
-        None => {
-            // Omitting is fine, indicating no body.
-        }
+        writer
+            .flush()
+            .await
+            .map_err(RegistryError::LocalWriteFailed)?;
     }
 
     registry
