@@ -19,7 +19,7 @@ use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncSeekExt, AsyncWrite};
 use uuid::Uuid;
 
-use super::{types::ImageManifest, ImageDigest};
+use super::{types::Manifest, ImageDigest};
 
 /// Length of a SHA256 hash in bytes.
 pub const SHA256_LEN: usize = 32;
@@ -514,7 +514,7 @@ impl RegistryStorage for FilesystemStorage {
         manifest: &[u8],
     ) -> Result<Digest, Error> {
         // TODO: Validate all blobs are completely uploaded.
-        let _manifest: ImageManifest =
+        let _manifest: Manifest =
             serde_json::from_slice(manifest).map_err(Error::InvalidManifest)?;
 
         let digest = Digest::from_contents(manifest);

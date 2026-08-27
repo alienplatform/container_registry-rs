@@ -33,9 +33,30 @@ pub(crate) struct ImageManifest {
     subject: Option<ContentDescriptor>,
 }
 
-impl ImageManifest {
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ImageIndex {
+    schema_version: u32,
+    media_type: String,
+    manifests: Vec<ContentDescriptor>,
+    annotations: Option<HashMap<String, String>>,
+    artifact_type: Option<String>,
+    subject: Option<ContentDescriptor>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub(crate) enum Manifest {
+    Image(ImageManifest),
+    Index(ImageIndex),
+}
+
+impl Manifest {
     pub(crate) fn media_type(&self) -> &str {
-        self.media_type.as_ref()
+        match self {
+            Self::Image(manifest) => manifest.media_type.as_ref(),
+            Self::Index(index) => index.media_type.as_ref(),
+        }
     }
 }
 
@@ -142,7 +163,7 @@ impl IntoResponse for OciErrors {
 
 #[cfg(test)]
 mod tests {
-    use super::ImageManifest;
+    use super::Manifest;
 
     #[test]
     fn simple_example_schema_parse() {
@@ -163,6 +184,26 @@ mod tests {
             ]
         }"#;
 
-        let _manifest: ImageManifest = serde_json::from_str(raw).expect("could not parse manifest");
+        let _manifest: Manifest = serde_json::from_str(raw).expect("could not parse manifest");
+    }
+
+    #[test]
+    fn image_index_schema_parse() {
+        let raw = r#"{
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [{
+                "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                "size": 7143,
+                "digest": "sha256:e4c58958181a5925816faa528ce959e487632f4cfd192f8132f71b32df2744b4",
+                "platform": { "architecture": "amd64", "os": "linux" }
+            }]
+        }"#;
+
+        let manifest: Manifest = serde_json::from_str(raw).expect("could not parse image index");
+        assert_eq!(
+            manifest.media_type(),
+            "application/vnd.oci.image.index.v1+json"
+        );
     }
 }

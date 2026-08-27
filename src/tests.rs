@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     body::Body,
     http::{
-        header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_RANGE, LOCATION},
+        header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, LOCATION},
         Request, StatusCode,
     },
 };
@@ -546,6 +546,54 @@ async fn image_download() {
     assert_eq!(response.status(), StatusCode::OK);
     let response_body = collect_body(response.into_body()).await;
     assert_eq!(response_body, RAW_IMAGE);
+}
+
+#[tokio::test]
+async fn image_index_upload_and_download() {
+    let ctx = registry_with_test_password_and_full_anon_access();
+    let mut service = ctx.make_service();
+    let app = service.ready().await.expect("could not launch service");
+    let location = "/v2/tests/multi-arch/manifests/latest";
+    let index = r#"{
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "manifests": [{
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "size": 7143,
+            "digest": "sha256:e4c58958181a5925816faa528ce959e487632f4cfd192f8132f71b32df2744b4",
+            "platform": { "architecture": "amd64", "os": "linux" }
+        }]
+    }"#;
+
+    let response = app
+        .call(
+            Request::builder()
+                .method("PUT")
+                .uri(location)
+                .header(CONTENT_TYPE, "application/vnd.oci.image.index.v1+json")
+                .body(Body::from(index))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let response = app
+        .call(
+            Request::builder()
+                .method("GET")
+                .uri(location)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(CONTENT_TYPE).unwrap(),
+        "application/vnd.oci.image.index.v1+json"
+    );
+    assert_eq!(collect_body(response.into_body()).await, index.as_bytes());
 }
 
 #[tokio::test]
