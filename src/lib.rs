@@ -60,7 +60,7 @@ use std::{
 use self::{
     auth::ValidCredentials,
     storage::{FilesystemStorage, ImageLocation, RegistryStorage},
-    types::{ImageManifest, OciError, OciErrors},
+    types::{Manifest, OciError, OciErrors},
 };
 use auth::{MissingPermission, Permissions};
 use axum::{
@@ -726,7 +726,7 @@ async fn manifest_get(
         .await?
         .ok_or(RegistryError::NotFound)?;
 
-    let manifest: ImageManifest =
+    let manifest: Manifest =
         serde_json::from_slice(&manifest_json).map_err(RegistryError::ParseManifest)?;
 
     Ok(Response::builder()
